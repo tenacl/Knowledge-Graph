@@ -23,6 +23,10 @@ def initialize_session_state():
 def main():
     initialize_session_state()
     
+    # 그래프 데이터와 이미지를 저장할 session_state 추가
+    if 'graph_images' not in st.session_state:
+        st.session_state.graph_images = {}
+    
     # 사이드바 설정
     with st.sidebar:
         st.title("🔑 API 키 설정")
@@ -73,6 +77,9 @@ def main():
         cols = st.columns(selected_count)
         col_idx = 0
         
+        # 그래프 데이터 초기화
+        st.session_state.graph_images = {}
+        
         for model_name, is_selected in selected_models.items():
             if is_selected:
                 with cols[col_idx]:
@@ -81,18 +88,62 @@ def main():
                         try:
                             graph_data = api_handler.generate_graph_data(model_name, user_input)
                             graph_image = graph_renderer.render(graph_data)
+                            
+                            # 그래프 이미지를 session_state에 저장
+                            st.session_state.graph_images[model_name] = graph_image
+                            
+                            # 그래프 표시
                             st.graphviz_chart(graph_image)
                             
-                            # 다운로드 버튼
+                            # PNG 형식으로 다운로드 버튼 추가
+                            png_data = graph_image.pipe(format='png')
                             st.download_button(
-                                label="이미지 다운로드",
-                                data=graph_image.pipe(format='png'),
+                                label="PNG 다운로드",
+                                data=png_data,
                                 file_name=f"knowledge_graph_{model_name}.png",
                                 mime="image/png"
                             )
+                            
+                            # SVG 형식으로 다운로드 버튼 추가
+                            svg_data = graph_image.pipe(format='svg').decode('utf-8')
+                            st.download_button(
+                                label="SVG 다운로드",
+                                data=svg_data,
+                                file_name=f"knowledge_graph_{model_name}.svg",
+                                mime="image/svg+xml"
+                            )
+                            
                         except Exception as e:
                             st.error(f"오류 발생: {str(e)}")
                 col_idx += 1
+    
+    # 이전에 생성된 그래프가 있다면 표시
+    elif st.session_state.graph_images:
+        selected_count = len(st.session_state.graph_images)
+        cols = st.columns(selected_count)
+        
+        for idx, (model_name, graph_image) in enumerate(st.session_state.graph_images.items()):
+            with cols[idx]:
+                st.subheader(f"{model_name.title()} 모델 결과")
+                st.graphviz_chart(graph_image)
+                
+                # PNG 형식으로 다운로드 버튼 추가
+                png_data = graph_image.pipe(format='png')
+                st.download_button(
+                    label="PNG 다운로드",
+                    data=png_data,
+                    file_name=f"knowledge_graph_{model_name}.png",
+                    mime="image/png"
+                )
+                
+                # SVG 형식으로 다운로드 버튼 추가
+                svg_data = graph_image.pipe(format='svg').decode('utf-8')
+                st.download_button(
+                    label="SVG 다운로드",
+                    data=svg_data,
+                    file_name=f"knowledge_graph_{model_name}.svg",
+                    mime="image/svg+xml"
+                )
 
 if __name__ == "__main__":
     main() 
