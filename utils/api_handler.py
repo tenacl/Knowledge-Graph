@@ -4,6 +4,7 @@ from anthropic import Anthropic
 import requests
 import json
 import streamlit as st
+import random
 
 class APIHandler:
     def __init__(self, api_keys):
@@ -14,8 +15,7 @@ class APIHandler:
         """API 클라이언트 초기화"""
         if self.api_keys['openai']:
             openai.api_key = self.api_keys['openai']
-        if self.api_keys['gemini']:
-            genai.configure(api_key=self.api_keys['gemini'])
+        # Gemini API 키는 각 요청마다 랜덤하게 선택하므로 여기서는 초기화하지 않음
         if self.api_keys['claude']:
             self.claude_client = Anthropic(api_key=self.api_keys['claude'])
     
@@ -73,24 +73,57 @@ class APIHandler:
 
     def _generate_with_gemini(self, prompt):
         """Gemini API를 사용하여 그래프 데이터 생성"""
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        response = model.generate_content(prompt)
-        try:
-            response_text = response.text
-            start_idx = response_text.find('{')
-            end_idx = response_text.rfind('}') + 1
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = response_text[start_idx:end_idx]
-                return json.loads(json_str)
-            raise ValueError("유효한 JSON 응답을 찾을 수 없습니다")
-        except Exception as e:
-            st.error(f"Gemini 응답 처리 중 오류 발생: {str(e)}")
-            return {
-                "nodes": [
-                    {"id": "error", "label": "응답 처리 오류"}
-                ],
-                "edges": []
-            }
+        # API 키 목록 복사 (원본 보존)
+        available_keys = self.api_keys['gemini'].copy() if isinstance(self.api_keys['gemini'], list) else []
+        
+        # 모든 API 키를 시도
+        while available_keys:
+            try:
+                # 랜덤하게 키 선택 및 제거
+                api_key = random.choice(available_keys)
+                available_keys.remove(api_key)
+                
+                # API 설정
+                genai.configure(api_key=api_key)
+                
+                # 모델 초기화 및 호출
+                model = genai.GenerativeModel('gemini-pro')
+                response = model.generate_content(
+                    prompt,
+                    generation_config={
+                        'temperature': 0.3,
+                        'max_output_tokens': 1024,
+                        'top_p': 0.8,
+                        'top_k': 40
+                    }
+                )
+                
+                # 응답 처리
+                if response.text:
+                    try:
+                        return json.loads(response.text)
+                    except json.JSONDecodeError:
+                        text = response.text
+                        start_idx = text.find('{')
+                        end_idx = text.rfind('}') + 1
+                        if start_idx >= 0 and end_idx > start_idx:
+                            return json.loads(text[start_idx:end_idx])
+                
+            except Exception as e:
+                st.warning(f"API 키 {api_key[-5:]} 사용 중 오류 발생: {str(e)}")
+                continue  # 다음 키 시도
+        
+        # 모든 키가 실패한 경우
+        st.error("모든 Gemini API 키가 실패했습니다.")
+        return {
+            "nodes": [
+                {"id": "error", "label": "API 오류 발생"},
+                {"id": "details", "label": "사용 가능한 API 키 없음"}
+            ],
+            "edges": [
+                {"from": "error", "to": "details", "label": "원인"}
+            ]
+        }
 
     def _generate_with_claude(self, prompt):
         """Claude API를 사용하여 그래프 데이터 생성"""
@@ -137,7 +170,7 @@ class APIHandler:
             
             if response.status_code != 200:
                 raise ValueError(f"API 호출 실패: {response.status_code}")
-                
+            
             response_json = response.json()
             content = response_json['choices'][0]['message']['content'].strip()
             

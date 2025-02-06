@@ -4,6 +4,9 @@ from utils.graph_renderer import GraphRenderer
 import os
 from dotenv import load_dotenv
 
+# 환경 변수 로드
+load_dotenv()
+
 # 페이지 설정
 st.set_page_config(
     page_title="AI 지식 그래프 생성기",
@@ -11,13 +14,26 @@ st.set_page_config(
     layout="wide"
 )
 
+def get_gemini_api_keys():
+    """환경 변수에서 Gemini API 키 목록을 가져옴"""
+    return [
+        os.getenv(f'GEMINI_API_KEY_{i}')
+        for i in range(1, 11)
+        if os.getenv(f'GEMINI_API_KEY_{i}')
+    ]
+
 def initialize_session_state():
     if 'api_keys' not in st.session_state:
         st.session_state.api_keys = {
             'openai': '',
-            'gemini': '',
+            'gemini': get_gemini_api_keys(),  # 환경 변수에서 API 키 목록 가져오기
             'claude': '',
-            'deepseek': ''
+            'deepseek': ''  # DeepSeek는 사용자 입력으로 받음
+        }
+        # 모델 선택 상태 초기화
+        st.session_state.selected_models = {
+            'gemini': True,  # Gemini는 기본적으로 체크
+            'deepseek': False  # DeepSeek는 기본적으로 체크 해제
         }
 
 def main():
@@ -31,24 +47,64 @@ def main():
     with st.sidebar:
         st.title("🔑 API 키 설정")
         
-        # API 키 입력
-        st.session_state.api_keys['openai'] = st.text_input("OpenAI API 키", type="password", value=st.session_state.api_keys['openai'])
-        st.session_state.api_keys['gemini'] = st.text_input("Gemini API 키", type="password", value=st.session_state.api_keys['gemini'])
-        st.session_state.api_keys['claude'] = st.text_input("Claude API 키", type="password", value=st.session_state.api_keys['claude'])
-        st.session_state.api_keys['deepseek'] = st.text_input("DeepSeek API 키", type="password", value=st.session_state.api_keys['deepseek'])
-        
         # 사용 가능한 모델 체크박스
         st.subheader("🤖 사용할 모델 선택")
-        available_models = {
-            name: key for name, key in st.session_state.api_keys.items() if key.strip()
-        }
         
+        # 선택된 모델 상태 관리
         selected_models = {}
-        for model_name in available_models:
-            selected_models[model_name] = st.checkbox(f"{model_name.title()} 사용", value=True)
         
-        if not available_models:
-            st.warning("최소 하나의 API 키를 입력해주세요.")
+        # Gemini 모델 설정 (항상 표시)
+        selected_models['gemini'] = st.checkbox(
+            "Gemini",
+            value=st.session_state.selected_models.get('gemini', True)
+        )
+        
+        # API 키 입력 필드들
+        st.session_state.api_keys['deepseek'] = st.text_input(
+            "DeepSeek API 키",
+            type="password",
+            value=st.session_state.api_keys['deepseek']
+        )
+        
+        st.session_state.api_keys['openai'] = st.text_input(
+            "OpenAI API 키",
+            type="password",
+            value=st.session_state.api_keys['openai']
+        )
+        
+        st.session_state.api_keys['claude'] = st.text_input(
+            "Claude API 키",
+            type="password",
+            value=st.session_state.api_keys['claude']
+        )
+        
+        # API 키가 입력된 경우에만 체크박스 표시
+        if st.session_state.api_keys['deepseek'].strip():
+            selected_models['deepseek'] = st.checkbox(
+                "DeepSeek",
+                value=st.session_state.selected_models.get('deepseek', True)
+            )
+        else:
+            selected_models['deepseek'] = False
+            
+        if st.session_state.api_keys['openai'].strip():
+            selected_models['openai'] = st.checkbox(
+                "OpenAI",
+                value=st.session_state.selected_models.get('openai', True)
+            )
+        else:
+            selected_models['openai'] = False
+            
+        if st.session_state.api_keys['claude'].strip():
+            selected_models['claude'] = st.checkbox(
+                "Claude",
+                value=st.session_state.selected_models.get('claude', True)
+            )
+        else:
+            selected_models['claude'] = False
+        
+        # 선택 상태 업데이트
+        st.session_state.selected_models.update(selected_models)
 
     # 메인 화면
     st.title("🧠 AI 지식 그래프 생성기")
@@ -61,26 +117,23 @@ def main():
             st.error("텍스트를 입력해주세요.")
             return
             
-        if not available_models:
-            st.error("최소 하나의 API 키를 입력해주세요.")
+        # 선택된 모델이 있는지 확인
+        if not any(st.session_state.selected_models.values()):
+            st.error("최소 하나의 모델을 선택해주세요.")
             return
             
         api_handler = APIHandler(st.session_state.api_keys)
         graph_renderer = GraphRenderer()
         
         # 선택된 모델별로 그래프 생성
-        selected_count = sum(1 for m in selected_models.values() if m)
-        if selected_count == 0:
-            st.error("최소 하나의 모델을 선택해주세요.")
-            return
-            
+        selected_count = sum(1 for m in st.session_state.selected_models.values() if m)
         cols = st.columns(selected_count)
         col_idx = 0
         
         # 그래프 데이터 초기화
         st.session_state.graph_images = {}
         
-        for model_name, is_selected in selected_models.items():
+        for model_name, is_selected in st.session_state.selected_models.items():
             if is_selected:
                 with cols[col_idx]:
                     st.subheader(f"{model_name.title()} 모델 결과")
