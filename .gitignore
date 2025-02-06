@@ -34,6 +34,7 @@ env/
 
 # Streamlit
 .streamlit/
+.streamlit/secrets.toml
 
 # System
 .DS_Store

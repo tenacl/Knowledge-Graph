@@ -15,7 +15,12 @@ st.set_page_config(
 )
 
 def get_gemini_api_keys():
-    """환경 변수에서 Gemini API 키 목록을 가져옴"""
+    """Gemini API 키 목록을 가져옴 (Streamlit Secrets 또는 로컬 환경변수)"""
+    # Streamlit Cloud의 경우
+    if hasattr(st.secrets, 'gemini_keys'):
+        return st.secrets.gemini_keys
+        
+    # 로컬 환경의 경우
     return [
         os.getenv(f'GEMINI_API_KEY_{i}')
         for i in range(1, 11)
